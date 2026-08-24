@@ -1,0 +1,14 @@
+[package]
+name = "am-scraper"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = "0.4.45"
+diesel = { version = "2.3.12", features = ["sqlite", "returning_clauses_for_sqlite_3_35"]}
+directories = "6.0.0"
+reqwest = { version = "0.13", features = ["json"] }
+scraper = "0.27.0"
+serde = "1.0.229"
+serde_json = "1.0.151"
+tokio = { version = "1", features = ["full"] }

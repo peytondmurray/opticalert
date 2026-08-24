@@ -1,25 +1,15 @@
 use std::{error::Error, path::{Path}};
 
 use chrono::{DateTime, Local, NaiveDateTime};
-use diesel::{Connection, SqliteConnection};
+use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection, dsl::insert_into, prelude::Insertable};
 use reqwest::Url;
 use scraper::{ElementRef, Html, Selector};
 
-// postings {
-//     post_type: String
-//     title: String
-//     seller: String
-//     price: f32
-//     hits: i32
-//     posted: sql date
-//     fetch: i32
-// }
+use crate::schema::postings;
 
-// fetches {
-//     fetched: sql date
-//     postings: i32
-// }
+mod schema;
 
+#[derive(Debug)]
 struct Posting {
     post_type: String,
     title: String,
@@ -87,7 +77,7 @@ fn get_sqlite_db(db_path: &Path) -> Result<SqliteConnection, Box<dyn Error>> {
     SqliteConnection::establish(&db_path.to_string_lossy()).map_err(|_| "what".into())
 }
 
-async fn get_am_table(target: &str) -> Result<Vec<Posting>, Box<dyn std::error::Error>> {
+async fn get_postings(target: &str) -> Result<Vec<Posting>, Box<dyn std::error::Error>> {
     let response = reqwest::get(Url::parse(target)?).await?.error_for_status()?;
     let html = Html::parse_document(&response.text().await?);
 
@@ -102,17 +92,41 @@ async fn get_am_table(target: &str) -> Result<Vec<Posting>, Box<dyn std::error::
     )
 }
 
-async fn sync_db(db: SqliteConnection, postings: Vec<Posting>) -> Vec<Posting> {
-    vec![]
+async fn sync_db(db: SqliteConnection, new_postings: Vec<Posting>) -> Vec<Posting> {
+
+    new_postings
+        .into_iter()
+        .filter_map(|posting| {
+            postings::table.filter(postings::url.eq(&posting.url))
+                .first(&mut db)
+                .map_or_else(|obj| {
+                    None
+                }, |obj| {
+                    insert_into(postings::table).values(
+                        (
+                            postings::post_type.eq(posting.post_type),
+                            postings::title.eq(posting.title),
+                            postings::seller.eq(posting.seller),
+                            postings::price.eq(posting.price),
+                            postings::hits.eq(posting.hits),
+                            postings::posted.eq(posting.posted),
+                            postings::url.eq(posting.url),
+                        )
+                    ).execute(&mut db);
+                    Some(posting)
+                })
+        })
+        .collect()
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
 
     let db = get_sqlite_db(Path::new("./am.db"))?;
-    let table =
-        get_am_table("https://www.astromart.com/classifieds/search?q=1100&category_id=10").await?;
-    let new_postings = sync_db(db, table);
+    let new_postings = sync_db(
+        db,
+        get_postings("https://www.astromart.com/classifieds/search?q=1100&category_id=10").await?,
+    );
 
     Ok(())
 }

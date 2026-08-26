@@ -1,7 +1,4 @@
 use diesel::{table, joinable, allow_tables_to_appear_in_same_query};
-use diesel::sql_types::{
-    Integer, Text, Double
-};
 
 table! {
     postings {

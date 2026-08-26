@@ -1,7 +1,9 @@
 use std::{error::Error, path::{Path}};
 
-use chrono::{DateTime, Local, NaiveDateTime};
-use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection, dsl::insert_into, prelude::Insertable};
+use tracing::{warn, Level};
+use tracing_subscriber::FmtSubscriber;
+use chrono::{NaiveDateTime};
+use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection, dsl::insert_into};
 use reqwest::Url;
 use scraper::{ElementRef, Html, Selector};
 
@@ -92,41 +94,43 @@ async fn get_postings(target: &str) -> Result<Vec<Posting>, Box<dyn std::error::
     )
 }
 
-async fn sync_db(db: SqliteConnection, new_postings: Vec<Posting>) -> Vec<Posting> {
-
-    new_postings
-        .into_iter()
-        .filter_map(|posting| {
-            postings::table.filter(postings::url.eq(&posting.url))
-                .first(&mut db)
-                .map_or_else(|obj| {
-                    None
-                }, |obj| {
-                    insert_into(postings::table).values(
-                        (
-                            postings::post_type.eq(posting.post_type),
-                            postings::title.eq(posting.title),
-                            postings::seller.eq(posting.seller),
-                            postings::price.eq(posting.price),
-                            postings::hits.eq(posting.hits),
-                            postings::posted.eq(posting.posted),
-                            postings::url.eq(posting.url),
-                        )
-                    ).execute(&mut db);
-                    Some(posting)
-                })
+fn sync_db(mut db: SqliteConnection, fetched_postings: &[Posting]) -> Vec<&Posting> {
+    fetched_postings
+        .iter()
+        .filter(|posting| {
+            if postings::table.filter(postings::url.eq(posting.url.to_owned())).first::<(i32, String, String, String, f32, i32, NaiveDateTime, String, i32)>(&mut db).is_err() {
+                if insert_into(postings::table).values(
+                    (
+                        postings::post_type.eq(&posting.post_type),
+                        postings::title.eq(&posting.title),
+                        postings::seller.eq(&posting.seller),
+                        postings::price.eq(posting.price),
+                        postings::hits.eq(posting.hits),
+                        postings::posted.eq(posting.posted),
+                        postings::url.eq(&posting.url),
+                    )
+                ).execute(&mut db).is_err() {
+                    warn!("Failed to insert posting into database: {}", &posting.url);
+                }
+                true
+            } else {
+                false
+            }
         })
         .collect()
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::TRACE)
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber)?;
 
     let db = get_sqlite_db(Path::new("./am.db"))?;
-    let new_postings = sync_db(
-        db,
-        get_postings("https://www.astromart.com/classifieds/search?q=1100&category_id=10").await?,
-    );
+    let postings = get_postings("https://www.astromart.com/classifieds/search?q=1100&category_id=10").await?;
+    let new_postings = sync_db(db, &postings);
 
     Ok(())
 }

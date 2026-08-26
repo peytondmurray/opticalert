@@ -12,3 +12,5 @@ scraper = "0.27.0"
 serde = "1.0.229"
 serde_json = "1.0.151"
 tokio = { version = "1", features = ["full"] }
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"

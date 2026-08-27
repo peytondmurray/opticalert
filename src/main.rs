@@ -194,8 +194,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             ProjectDirs::from("", "", "amscraper")
                 .ok_or("Can't find project directory")?
                 .config_dir()
-        )?
-    )?;
+                .join("config.toml")
+        ).map_err(|_| "Couldn't read the config file at ~/.config/amscraper/config.toml")?
+    ).map_err(|_| "Can't parse the config file as toml")?;
 
 
     let db = get_sqlite_db(Path::new("./am.db"))?;

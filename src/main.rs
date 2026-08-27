@@ -1,111 +1,30 @@
+use std::path::PathBuf;
 use std::{error::Error, fs, path::Path, str::FromStr};
 
-use serde::Deserialize;
 use tracing::{warn, info, error, Level};
 use tracing_subscriber::FmtSubscriber;
 use chrono::{NaiveDateTime};
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection, dsl::insert_into};
 use reqwest::{Url};
-use scraper::{ElementRef, Html, Selector};
+use scraper::{ElementRef};
 use futures::{stream, StreamExt};
 use directories::{ProjectDirs};
 
 use crate::schema::postings;
+use crate::posting::{ConfigFile, Posting};
 
 mod schema;
+mod astromart;
+mod posting;
 
-#[derive(Debug, Deserialize)]
-struct ConfigFile {
-    config: Config
-}
+pub trait Backend {
+    fn new_posting(value: ElementRef) -> Result<Posting, Box<dyn Error>>;
+    async fn get_postings(&self) -> Result<Vec<Posting>, Box<dyn std::error::Error>>;
 
-#[derive(Debug, Deserialize)]
-struct Config {
-    gotify_server: String,
-    gotify_am_key: String,
-}
-
-#[derive(Debug)]
-struct Posting {
-    post_type: String,
-    title: String,
-    seller: String,
-    price: f32,
-    hits: i32,
-    posted: NaiveDateTime,
-    url: String,
-}
-
-impl Posting {
-    fn new(value: ElementRef) -> Result<Self, Box<dyn Error>> {
-        let post_type = value
-            .select(&Selector::parse(".flex-table-col--type")?)
-            .next()
-            .ok_or("Cannot locate type")?
-            .inner_html();
-
-        let post_title_el = value
-            .select(&Selector::parse(".flex-table-col--title > a")?)
-            .next()
-            .ok_or("Cannot locate title")?;
-
-        let title = post_title_el.inner_html();
-        let url = "www.astromart.com".to_owned()
-            + (post_title_el.attr("href").ok_or("Can't find post link")?);
-
-        let seller = value
-            .select(&Selector::parse(".flex-table-col--seller > a")?)
-            .next()
-            .ok_or("Cannot locate seller")?
-            .inner_html();
-
-        let price = value
-            .select(&Selector::parse(".flex-table-col--price")?)
-            .next()
-            .ok_or("Cannot locate price")?
-            .inner_html()
-            .strip_prefix("$")
-            .ok_or("Cannot trim the $ from the price")?
-            .parse::<f32>()?;
-
-        let hits = value
-            .select(&Selector::parse(".flex-table-col--hits")?)
-            .next()
-            .ok_or("Cannot locate hits")?
-            .inner_html()
-            .parse::<i32>()?;
-
-        let posted = NaiveDateTime::parse_from_str(
-            &value
-                .select(&Selector::parse(".flex-table-col--date")?)
-                .next()
-                .ok_or("Cannot locate hits")?
-                .inner_html(),
-            "%m/%d/%Y %I:%M%p"
-        )?;
-
-        Ok(Posting {post_type, title, seller, price, hits, posted, url})
-
-    }
 }
 
 fn get_sqlite_db(db_path: &Path) -> Result<SqliteConnection, Box<dyn Error>> {
     SqliteConnection::establish(&db_path.to_string_lossy()).map_err(|_| "what".into())
-}
-
-async fn get_postings(target: &str) -> Result<Vec<Posting>, Box<dyn std::error::Error>> {
-    let response = reqwest::get(Url::parse(target)?).await?.error_for_status()?;
-    let html = Html::parse_document(&response.text().await?);
-
-    let selector = Selector::parse(".classifieds")?;
-    html.select(&selector);
-
-    Ok(
-        html
-            .select(&selector)
-            .filter_map(|el| { Posting::new(el).ok() })
-            .collect()
-    )
 }
 
 fn sync_db(mut db: SqliteConnection, fetched_postings: &[Posting]) -> Vec<&Posting> {
@@ -181,6 +100,31 @@ async fn send_gotify(server_url: Url, key: &str, postings: &[&Posting]) -> Resul
     Ok(())
 }
 
+fn get_or_create_config_dir() -> Result<PathBuf, Box<dyn Error>> {
+    let config_dir = ProjectDirs::from("", "", "opticalert")
+        .ok_or("Can't find project directory")?
+        .config_dir().to_path_buf();
+
+    if !config_dir.exists() {
+        fs::create_dir_all(&config_dir)?;
+    }
+
+    Ok(config_dir)
+}
+
+fn get_config(config_dir: &Path) -> Result<ConfigFile, Box<dyn Error>> {
+    let config_path = config_dir.join("config.toml");
+    let config_file: ConfigFile = toml::from_str(
+        &fs::read_to_string(&config_path)
+            .map_err(|_| {
+                format!("Couldn't read the config file at {}", config_path.to_string_lossy())
+            })?
+    ).map_err(|_| {
+        format!("Can't parse the config file at {} as toml", config_path.to_string_lossy())
+    })?;
+    return Ok(config_file)
+}
+
 /// https://codingpackets.com/blog/rust-load-a-toml-file/
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -190,24 +134,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tracing::subscriber::set_global_default(subscriber)?;
 
-    let config_file: ConfigFile = toml::from_str(
-        &fs::read_to_string(
-            ProjectDirs::from("", "", "amscraper")
-                .ok_or("Can't find project directory")?
-                .config_dir()
-                .join("config.toml")
-        ).map_err(|_| "Couldn't read the config file at ~/.config/amscraper/config.toml")?
-    ).map_err(|_| "Can't parse the config file as toml")?;
+    let config_dir = get_or_create_config_dir()?;
+    let config = get_config(&config_dir);
 
+    let db = get_sqlite_db(Path::new("./opticalert.db"))?;
 
-    let db = get_sqlite_db(Path::new("./am.db"))?;
-    let postings = get_postings("https://www.astromart.com/classifieds/search?q=1100&category_id=10").await?;
-    let new_postings = sync_db(db, &postings);
-    send_gotify(
-        Url::from_str(&config_file.config.gotify_server)?,
-        &config_file.config.gotify_am_key,
-        &new_postings,
-    ).await?;
+    // TODO: Read the config file and instantiate the necessary backends
+
+    // let postings = get_postings("https://www.astromart.com/classifieds/search?q=1100&category_id=10").await?;
+    // let new_postings = sync_db(db, &postings);
+    // send_gotify(
+    //     Url::from_str(&config_file.config.gotify_server)?,
+    //     &config_file.config.gotify_am_key,
+    //     &new_postings,
+    // ).await?;
 
     Ok(())
 }

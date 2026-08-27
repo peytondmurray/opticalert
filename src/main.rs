@@ -181,6 +181,7 @@ async fn send_gotify(server_url: Url, key: &str, postings: &[&Posting]) -> Resul
     Ok(())
 }
 
+/// https://codingpackets.com/blog/rust-load-a-toml-file/
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let subscriber = FmtSubscriber::builder()

@@ -7,10 +7,12 @@ edition = "2024"
 chrono = "0.4.45"
 diesel = { version = "2.3.12", features = ["sqlite", "returning_clauses_for_sqlite_3_35", "chrono"]}
 directories = "6.0.0"
-reqwest = { version = "0.13", features = ["json"] }
+futures = "0.3.34"
+reqwest = { version = "0.13", features = ["json", "form"] }
 scraper = "0.27.0"
-serde = "1.0.229"
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tokio = { version = "1", features = ["full"] }
+toml = "1.1.4"
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"

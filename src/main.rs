@@ -1,27 +1,25 @@
 use std::path::PathBuf;
-use std::{error::Error, fs, path::Path, str::FromStr};
+use std::{error::Error, fs, path::Path};
 
 use tracing::{warn, info, error, Level};
 use tracing_subscriber::FmtSubscriber;
 use chrono::{NaiveDateTime};
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection, dsl::insert_into};
 use reqwest::{Url};
-use scraper::{ElementRef};
 use futures::{stream, StreamExt};
 use directories::{ProjectDirs};
 
 use crate::schema::postings;
-use crate::posting::{ConfigFile, Posting};
+use crate::posting::Posting;
+use crate::config::ConfigFile;
+use crate::backend::Backend;
+use crate::astromart::AstromartBackend;
 
+mod backend;
 mod schema;
 mod astromart;
 mod posting;
-
-pub trait Backend {
-    fn new_posting(value: ElementRef) -> Result<Posting, Box<dyn Error>>;
-    async fn get_postings(&self) -> Result<Vec<Posting>, Box<dyn std::error::Error>>;
-
-}
+mod config;
 
 fn get_sqlite_db(db_path: &Path) -> Result<SqliteConnection, Box<dyn Error>> {
     SqliteConnection::establish(&db_path.to_string_lossy()).map_err(|_| "what".into())
@@ -135,11 +133,39 @@ async fn main() -> Result<(), Box<dyn Error>> {
     tracing::subscriber::set_global_default(subscriber)?;
 
     let config_dir = get_or_create_config_dir()?;
-    let config = get_config(&config_dir);
+    let config = get_config(&config_dir)?;
 
     let db = get_sqlite_db(Path::new("./opticalert.db"))?;
 
-    // TODO: Read the config file and instantiate the necessary backends
+    // Read the config file and instantiate the necessary backends
+    let backends: Option<Vec<Box<dyn Backend>>> = config
+        .astromart
+        .map(|obj| {
+            obj
+                .pages
+                .iter()
+                .map(|page| {
+                    Box::new(AstromartBackend { page_url: page.to_string() }) as _
+                })
+                .collect::<Vec<Box<dyn Backend>>>()
+        });
+
+
+    let postings: Vec<Posting> = if let Some(bes) = backends {
+        bes
+            .iter()
+            .map(async |be| {
+                be.get_postings().await?
+            })
+            .collect()
+    } else {
+        []
+    };
+
+    // let postings = backends
+    //     .map(|bes| {
+    //         bes.get_postings()
+    //     });
 
     // let postings = get_postings("https://www.astromart.com/classifieds/search?q=1100&category_id=10").await?;
     // let new_postings = sync_db(db, &postings);

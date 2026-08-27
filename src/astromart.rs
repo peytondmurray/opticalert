@@ -1,11 +1,18 @@
+use reqwest::Url;
+use async_trait::async_trait;
 use scraper::{ElementRef, Html, Selector};
+use crate::backend::Backend;
+use crate::posting::{Status, Posting};
+use std::{error::Error};
+use chrono::{NaiveDateTime};
 
-struct AstromartBackend<'a> {
-    page_url: &'a str
+pub struct AstromartBackend {
+    pub page_url: String
 }
 
-impl Backend for AstromartBackend<'_> {
-    fn new_posting(value: ElementRef) -> Result<Posting, Box<dyn Error>> {
+#[async_trait]
+impl Backend for AstromartBackend {
+    fn new_posting(&self, value: ElementRef) -> Result<Posting, Box<dyn Error>> {
         let post_type = value
             .select(&Selector::parse(".flex-table-col--type")?)
             .next()
@@ -64,8 +71,9 @@ impl Backend for AstromartBackend<'_> {
         Ok(Posting {post_type, title, seller, price, hits, posted, url, status})
 
     }
+
     async fn get_postings(&self) -> Result<Vec<Posting>, Box<dyn std::error::Error>> {
-        let response = reqwest::get(Url::parse(self.page_url)?).await?.error_for_status()?;
+        let response = reqwest::get(Url::parse(&self.page_url)?).await?.error_for_status()?;
         let html = Html::parse_document(&response.text().await?);
 
         let selector = Selector::parse(".classifieds")?;
@@ -74,7 +82,7 @@ impl Backend for AstromartBackend<'_> {
         Ok(
             html
                 .select(&selector)
-                .filter_map(|el| { Self::new_posting(el).ok() })
+                .filter_map(|el| { self.new_posting(el).ok() })
                 .collect()
         )
     }

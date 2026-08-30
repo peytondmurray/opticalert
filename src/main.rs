@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::{error::Error, fs, path::Path};
 
 use tracing::{warn, info, error, Level};
@@ -10,7 +11,7 @@ use futures::{stream, StreamExt};
 use directories::{ProjectDirs};
 
 use crate::schema::postings;
-use crate::posting::Posting;
+use crate::posting::{Posting, Status};
 use crate::config::ConfigFile;
 use crate::backend::Backend;
 use crate::astromart::AstromartBackend;
@@ -68,21 +69,28 @@ async fn send_gotify(server_url: Url, key: &str, postings: &[&Posting]) -> Resul
         .map(|posting| {
             let url = server_url.clone();
             let subclient = client.clone();
+
             async move {
-                subclient
-                    .post(url)
-                    .form(
-                        &[
-                            ("title", &posting.title),
-                            ("message", &posting.url),
-                            ("priority", &"10".to_string())
-                        ]
-                    )
-                    .header("X-Gotify-Key", key)
-                    .send()
-                    .await?
-                    .bytes()
-                    .await
+                if posting.status == Status::Sold {
+                    return Ok(None);
+                }
+
+                Some(
+                    subclient
+                        .post(url)
+                        .form(
+                            &[
+                                ("title", &posting.title),
+                                ("message", &posting.url),
+                                ("priority", &"10".to_string())
+                            ]
+                        )
+                        .header("X-Gotify-Key", key)
+                        .send()
+                        .await?
+                        .bytes()
+                        .await
+                ).transpose()
             }
         })
         .buffer_unordered(8);
@@ -90,6 +98,7 @@ async fn send_gotify(server_url: Url, key: &str, postings: &[&Posting]) -> Resul
     responses.for_each(|r| {
         async {
             match r {
+                Ok(None) => info!("No notification sent, posting is sold"),
                 Ok(_) => info!("Gotify acknowledgement received"),
                 Err(e) => error!("Encountered an error issuing notification: {}", e)
             }
@@ -120,14 +129,14 @@ fn get_config(config_dir: &Path) -> Result<ConfigFile, Box<dyn Error>> {
     ).map_err(|_| {
         format!("Can't parse the config file at {} as toml", config_path.to_string_lossy())
     })?;
-    return Ok(config_file)
+    Ok(config_file)
 }
 
 /// https://codingpackets.com/blog/rust-load-a-toml-file/
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::TRACE)
+        .with_max_level(Level::INFO)
         .finish();
 
     tracing::subscriber::set_global_default(subscriber)?;
@@ -138,7 +147,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let db = get_sqlite_db(Path::new("./opticalert.db"))?;
 
     // Read the config file and instantiate the necessary backends
-    let backends: Option<Vec<Box<dyn Backend>>> = config
+    let maybe_backends: Option<Vec<Box<dyn Backend>>> = config
         .astromart
         .map(|obj| {
             obj
@@ -150,30 +159,34 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .collect::<Vec<Box<dyn Backend>>>()
         });
 
+    info!("Found backends: {:?}", maybe_backends);
 
-    let postings: Vec<Posting> = if let Some(bes) = backends {
-        bes
-            .iter()
-            .map(async |be| {
-                be.get_postings().await?
-            })
-            .collect()
+    let posts = if let Some(backends) = maybe_backends {
+        stream::iter(backends)
+            .map(|b| async move { b.get_postings().await.ok() })
+            .buffer_unordered(2)
+            // Can't use a .filter() here because we need whatever comes out to be an awaitable;
+            // can't use a filter_map above because the thing that comes out is an awaitable (???)
+            // even though this is part of the futures package (why??)
+            .filter_map(|obj| async { obj })
+            .collect::<Vec<Vec<Posting>>>()
+            .await
+            .into_iter()
+            .flatten()
+            .collect::<Vec<Posting>>()
     } else {
-        []
+        return Ok(())
     };
 
-    // let postings = backends
-    //     .map(|bes| {
-    //         bes.get_postings()
-    //     });
+    let new_posts = sync_db(db, &posts);
 
-    // let postings = get_postings("https://www.astromart.com/classifieds/search?q=1100&category_id=10").await?;
-    // let new_postings = sync_db(db, &postings);
-    // send_gotify(
-    //     Url::from_str(&config_file.config.gotify_server)?,
-    //     &config_file.config.gotify_am_key,
-    //     &new_postings,
-    // ).await?;
+    println!("{:?}", new_posts);
+
+    send_gotify(
+        Url::from_str(&config.config.gotify_server)?,
+        &config.config.gotify_key,
+        &new_posts,
+    ).await?;
 
     Ok(())
 }

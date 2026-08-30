@@ -1,12 +1,12 @@
 use chrono::{NaiveDateTime};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Status {
     Sold,
     None
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Posting {
     pub post_type: String,
     pub title: String,

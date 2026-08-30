@@ -4,5 +4,5 @@ gotify_key = "gtfya.7PuhuMkzNeWBrgID25ooNT6CEwf1Bk8pkpty07Sm34g"
 
 [astromart]
 pages = [
-    "https://astromart.com/classifieds/search?q=1100&username=&category_id=10&type=For+Sale&status=&from=&to=&price_from=&price_to=&country=&continent=",
+    "https://astromart.com/classifieds/search?q=1100&username=&category_id=10&type=For+Sale&status=&from=&to=&price_from=&price_to=&country=&continent=&page={page}",
 ]

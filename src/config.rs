@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Site {
-    pub pages: Vec<String>
+    pub pages: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,8 +1,8 @@
-use std::fmt::Debug;
-use std::error::Error;
-use async_trait::async_trait;
-use scraper::{ElementRef};
 use crate::posting::Posting;
+use async_trait::async_trait;
+use scraper::ElementRef;
+use std::error::Error;
+use std::fmt::Debug;
 
 #[async_trait]
 pub trait Backend: Debug {

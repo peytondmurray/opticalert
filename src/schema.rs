@@ -5,7 +5,7 @@ table! {
         id -> Integer,
         post_type -> Text,
         title -> Text,
-        seller -> Text,
+        seller -> Nullable<Text>,
         price -> Float,
         hits -> Integer,
         posted -> Timestamp,

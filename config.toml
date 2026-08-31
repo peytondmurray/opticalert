@@ -1,6 +1,6 @@
 [config]
-gotify_server = "https://gotify.pdmurray.dev"
-gotify_key = "gtfya.7PuhuMkzNeWBrgID25ooNT6CEwf1Bk8pkpty07Sm34g"
+gotify_server = "<your server>"
+gotify_key = "<your key>"
 
 [astromart]
 pages = [

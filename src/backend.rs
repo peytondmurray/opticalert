@@ -2,6 +2,8 @@ use crate::posting::Posting;
 use async_trait::async_trait;
 use std::fmt::Debug;
 
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct BackendError {
     message: String,
 }

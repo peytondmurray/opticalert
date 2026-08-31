@@ -1,3 +1,4 @@
+use config::Config;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::{error::Error, fs, path::Path};
@@ -13,13 +14,12 @@ use tracing_subscriber::FmtSubscriber;
 
 use crate::astromart::AstromartBackend;
 use crate::backend::Backend;
-use crate::config::ConfigFile;
 use crate::posting::{Posting, PostingRow, Status};
 use crate::schema::postings;
 
 mod astromart;
 mod backend;
-mod config;
+mod configuration;
 mod posting;
 mod schema;
 
@@ -130,22 +130,15 @@ fn get_or_create_config_dir() -> Result<PathBuf, Box<dyn Error>> {
     Ok(config_dir)
 }
 
-fn get_config(config_dir: &Path) -> Result<ConfigFile, Box<dyn Error>> {
+fn get_config(config_dir: &Path) -> Result<configuration::ConfigFile, Box<dyn Error>> {
     let config_path = config_dir.join("config.toml");
-    let config_file: ConfigFile =
-        toml::from_str(&fs::read_to_string(&config_path).map_err(|_| {
-            format!(
-                "Couldn't read the config file at {}",
-                config_path.to_string_lossy()
-            )
-        })?)
-        .map_err(|_| {
-            format!(
-                "Can't parse the config file at {} as toml",
-                config_path.to_string_lossy()
-            )
-        })?;
-    Ok(config_file)
+
+    let settings = Config::builder()
+        .add_source(config::File::with_name(&config_path.to_string_lossy()))
+        .add_source(config::Environment::with_prefix("OPTICALERT"))
+        .build()?;
+
+    Ok(settings.try_deserialize::<configuration::ConfigFile>()?)
 }
 
 /// https://codingpackets.com/blog/rust-load-a-toml-file/
@@ -157,9 +150,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tracing::subscriber::set_global_default(subscriber)?;
 
-    let config_dir = get_or_create_config_dir()?;
-    let config = get_config(&config_dir)?;
-
+    let config = get_config(&get_or_create_config_dir()?)?;
     let db = get_sqlite_db(Path::new("./opticalert.db"))?;
 
     // Read the config file and instantiate the necessary backends

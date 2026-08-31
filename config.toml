@@ -4,5 +4,5 @@ gotify_key = "<your key>"
 
 [astromart]
 pages = [
-    "https://astromart.com/classifieds/search?q=1100&username=&category_id=10&type=For+Sale&status=&from=&to=&price_from=&price_to=&country=&continent=&page={page}",
+    "<your classifieds search>",
 ]

@@ -79,18 +79,18 @@ impl Backend for AstromartBackend {
         let response = reqwest::get(Url::parse(&self.page_url)?)
             .await?
             .error_for_status()?;
-        let html = Html::parse_document(&response.text().await?);
 
-        // You can't send any scraper-defined object across threads, so instead we synchronously
-        // parse the classifieds URL; then we'll make async requests later on to fill in the
-        // details.
-        let selector = Selector::parse(".classifieds > .flex-table-row.flex-table-row--body")?;
+        let partials = {
+            let html = Html::parse_document(&response.text().await?);
+            // You can't send any scraper-defined object across threads, so instead we synchronously
+            // parse the classifieds URL; then we'll make async requests later on to fill in the
+            // details.
+            let selector = Selector::parse(".classifieds > .flex-table-row.flex-table-row--body")?;
 
-        let partials = html
-            .select(&selector)
-            .filter_map(|el| parse_table_row(el).ok())
-            .collect::<Vec<PartialPosting>>();
-
+            html.select(&selector)
+                .filter_map(|el| parse_table_row(el).ok())
+                .collect::<Vec<PartialPosting>>()
+        };
         let res = join_all(
             partials
                 .iter()
@@ -99,7 +99,7 @@ impl Backend for AstromartBackend {
         )
         .await
         .iter()
-        .filter_map(|item| item.ok())
+        .filter_map(|item| item.clone().ok())
         .collect();
 
         info!("Postings: {:?}", res);

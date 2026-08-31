@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 async-trait = "0.1.92"
 chrono = "0.4.45"
+config = { version = "0.15.25", features = ["toml"] }
 diesel = { version = "2.3.12", features = ["sqlite", "returning_clauses_for_sqlite_3_35", "chrono"]}
 directories = "6.0.0"
 futures = "0.3.34"

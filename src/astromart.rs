@@ -80,14 +80,15 @@ impl Backend for AstromartBackend {
             .await?
             .error_for_status()?;
 
+        // We scope the `Html` usage here because it is not Send, and thus cannot be safely held
+        // onto across await points. Basically nothing provided by scraper is okay to be sent cross
+        // thread (although we are only doing concurrent work here, not multithreaded...?)
         let partials = {
             let html = Html::parse_document(&response.text().await?);
-            // You can't send any scraper-defined object across threads, so instead we synchronously
-            // parse the classifieds URL; then we'll make async requests later on to fill in the
-            // details.
             let selector = Selector::parse(".classifieds > .flex-table-row.flex-table-row--body")?;
 
-            html.select(&selector)
+            html
+                .select(&selector)
                 .filter_map(|el| parse_table_row(el).ok())
                 .collect::<Vec<PartialPosting>>()
         };
@@ -102,7 +103,6 @@ impl Backend for AstromartBackend {
         .filter_map(|item| item.clone().ok())
         .collect();
 
-        info!("Postings: {:?}", res);
         Ok(res)
     }
 }

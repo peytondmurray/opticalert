@@ -1,5 +1,6 @@
 use config::Config;
 use std::path::PathBuf;
+use futures::future::join_all;
 use std::str::FromStr;
 use std::{error::Error, fs, path::Path};
 
@@ -14,7 +15,7 @@ use tracing_subscriber::FmtSubscriber;
 use crate::astromart::AstromartBackend;
 use crate::backend::Backend;
 use crate::posting::{Posting, PostingRow, Status};
-use crate::schema::{fetches, postings};
+use crate::schema::{bootstrap, postings, fetches};
 
 mod astromart;
 mod backend;
@@ -40,10 +41,10 @@ fn sync_db(
         .filter(|posting| {
             if postings::table
                 .filter(postings::url.eq(posting.url.to_owned()))
-                .first::<PostingRow>(&mut db)
+                .first::<PostingRow>(db)
                 .is_err()
             {
-                if insert_into(postings::table)
+                if let Err(err) = insert_into(postings::table)
                     .values((
                         postings::post_type.eq(&posting.post_type),
                         postings::title.eq(&posting.title),
@@ -54,12 +55,11 @@ fn sync_db(
                         postings::url.eq(&posting.url),
                         postings::fetch_id.eq(id),
                     ))
-                    .execute(&mut db)
-                    .is_ok()
+                    .execute(db)
                 {
-                    info!("Loading {} into database", &posting.url);
+                    warn!("Failed to insert posting into database: {}: {}", &posting.url, err);
                 } else {
-                    warn!("Failed to insert posting into database: {}", &posting.url);
+                    info!("Loading {} into database", &posting.url);
                 }
                 true
             } else {
@@ -174,25 +174,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     info!("Found backends: {:?}", maybe_backends);
-
     let posts = if let Some(backends) = maybe_backends {
-        stream::iter(backends)
-            .map(|b| async move { b.get_postings().await.ok() })
-            .buffer_unordered(2)
-            // Can't use a .filter() here because we need whatever comes out to be an awaitable;
-            // can't use a filter_map above because the thing that comes out is an awaitable (???)
-            // even though this is part of the futures package (why??)
-            .filter_map(|obj| async { obj })
-            .collect::<Vec<Vec<Posting>>>()
+        join_all(backends.iter().map(|b| b.get_postings()))
             .await
-            .into_iter()
+            .iter()
+            .filter_map(|o| o.clone().ok())
             .flatten()
             .collect::<Vec<Posting>>()
     } else {
         return Ok(());
     };
 
-    let new_posts = sync_db(db, &posts)?;
+    bootstrap(&mut db)?;
+    let new_posts = sync_db(&mut db, &posts);
 
     println!("{:?}", new_posts);
 

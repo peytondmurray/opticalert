@@ -3,9 +3,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::{error::Error, fs, path::Path};
 
-use diesel::{
-    Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection, dsl::insert_into,
-};
+use diesel::dsl::{insert_into, now};
+use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
 use directories::ProjectDirs;
 use futures::{StreamExt, stream};
 use reqwest::Url;
@@ -15,7 +14,7 @@ use tracing_subscriber::FmtSubscriber;
 use crate::astromart::AstromartBackend;
 use crate::backend::Backend;
 use crate::posting::{Posting, PostingRow, Status};
-use crate::schema::postings;
+use crate::schema::{fetches, postings};
 
 mod astromart;
 mod backend;
@@ -27,8 +26,16 @@ fn get_sqlite_db(db_path: &Path) -> Result<SqliteConnection, Box<dyn Error>> {
     SqliteConnection::establish(&db_path.to_string_lossy()).map_err(|_| "what".into())
 }
 
-fn sync_db(mut db: SqliteConnection, fetched_postings: &[Posting]) -> Vec<&Posting> {
-    fetched_postings
+fn sync_db(
+    mut db: SqliteConnection,
+    fetched_postings: &[Posting],
+) -> Result<Vec<&Posting>, Box<dyn Error>> {
+    let id = insert_into(fetches::table)
+        .values((fetches::date.eq(&now),))
+        .get_result::<(i32, String)>(&mut db)?
+        .0;
+
+    Ok(fetched_postings
         .iter()
         .filter(|posting| {
             if postings::table
@@ -45,6 +52,7 @@ fn sync_db(mut db: SqliteConnection, fetched_postings: &[Posting]) -> Vec<&Posti
                         postings::hits.eq(posting.hits),
                         postings::posted.eq(posting.posted),
                         postings::url.eq(&posting.url),
+                        postings::fetch_id.eq(id),
                     ))
                     .execute(&mut db)
                     .is_ok()
@@ -58,7 +66,7 @@ fn sync_db(mut db: SqliteConnection, fetched_postings: &[Posting]) -> Vec<&Posti
                 false
             }
         })
-        .collect()
+        .collect())
 }
 
 /// curl "https://push.example.de/message"
@@ -184,7 +192,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     };
 
-    let new_posts = sync_db(db, &posts);
+    let new_posts = sync_db(db, &posts)?;
 
     println!("{:?}", new_posts);
 

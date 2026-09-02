@@ -6,7 +6,6 @@ use futures::future::join_all;
 use reqwest::Url;
 use scraper::{ElementRef, Html, Selector};
 use std::error::Error;
-use tracing::info;
 
 #[derive(Debug, Clone)]
 struct PartialPosting {
@@ -87,8 +86,7 @@ impl Backend for AstromartBackend {
             let html = Html::parse_document(&response.text().await?);
             let selector = Selector::parse(".classifieds > .flex-table-row.flex-table-row--body")?;
 
-            html
-                .select(&selector)
+            html.select(&selector)
                 .filter_map(|el| parse_table_row(el).ok())
                 .collect::<Vec<PartialPosting>>()
         };

@@ -1,6 +1,6 @@
 use config::Config;
-use std::path::PathBuf;
 use futures::future::join_all;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::{error::Error, fs, path::Path};
 
@@ -15,7 +15,7 @@ use tracing_subscriber::FmtSubscriber;
 use crate::astromart::AstromartBackend;
 use crate::backend::Backend;
 use crate::posting::{Posting, PostingRow, Status};
-use crate::schema::{bootstrap, postings, fetches};
+use crate::schema::{bootstrap, fetches, postings};
 
 mod astromart;
 mod backend;
@@ -27,13 +27,13 @@ fn get_sqlite_db(db_path: &Path) -> Result<SqliteConnection, Box<dyn Error>> {
     SqliteConnection::establish(&db_path.to_string_lossy()).map_err(|_| "what".into())
 }
 
-fn sync_db(
-    mut db: SqliteConnection,
-    fetched_postings: &[Posting],
-) -> Result<Vec<&Posting>, Box<dyn Error>> {
+fn sync_db<'a>(
+    db: &mut SqliteConnection,
+    fetched_postings: &'a [Posting],
+) -> Result<Vec<&'a Posting>, Box<dyn Error>> {
     let id = insert_into(fetches::table)
         .values((fetches::date.eq(&now),))
-        .get_result::<(i32, String)>(&mut db)?
+        .get_result::<(i32, String)>(db)?
         .0;
 
     Ok(fetched_postings
@@ -57,7 +57,10 @@ fn sync_db(
                     ))
                     .execute(db)
                 {
-                    warn!("Failed to insert posting into database: {}: {}", &posting.url, err);
+                    warn!(
+                        "Failed to insert posting into database: {}: {}",
+                        &posting.url, err
+                    );
                 } else {
                     info!("Loading {} into database", &posting.url);
                 }
@@ -84,32 +87,28 @@ async fn send_gotify(
     postings: &[&Posting],
 ) -> Result<(), Box<dyn Error>> {
     let client = reqwest::Client::new();
+    let url = server_url.join("message")?;
     let responses = stream::iter(postings)
-        .map(|posting| {
-            let url = server_url.clone();
-            let subclient = client.clone();
-
-            async move {
-                if posting.status == Status::Sold {
-                    return Ok(None);
-                }
-
-                Some(
-                    subclient
-                        .post(url)
-                        .form(&[
-                            ("title", &posting.title),
-                            ("message", &posting.url),
-                            ("priority", &"10".to_string()),
-                        ])
-                        .header("X-Gotify-Key", key)
-                        .send()
-                        .await?
-                        .bytes()
-                        .await,
-                )
-                .transpose()
+        .map(|posting| async {
+            if posting.status == Status::Sold {
+                return Ok(None);
             }
+
+            Some(
+                client
+                    .post(url.clone())
+                    .form(&[
+                        ("title", &posting.title),
+                        ("message", &posting.url),
+                        ("priority", &"10".to_string()),
+                    ])
+                    .header("X-Gotify-Key", key)
+                    .send()
+                    .await?
+                    .text()
+                    .await,
+            )
+            .transpose()
         })
         .buffer_unordered(8);
 
@@ -117,7 +116,7 @@ async fn send_gotify(
         .for_each(|r| async {
             match r {
                 Ok(None) => info!("No notification sent, posting is sold"),
-                Ok(_) => info!("Gotify acknowledgement received"),
+                Ok(Some(res)) => info!("Gotify acknowledgement received: {:?}", res),
                 Err(e) => error!("Encountered an error issuing notification: {}", e),
             }
         })
@@ -159,7 +158,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     tracing::subscriber::set_global_default(subscriber)?;
 
     let config = get_config(&get_or_create_config_dir()?)?;
-    let db = get_sqlite_db(Path::new("./opticalert.db"))?;
+    let mut db = get_sqlite_db(Path::new("./opticalert.db"))?;
 
     // Read the config file and instantiate the necessary backends
     let maybe_backends: Option<Vec<Box<dyn Backend>>> = config.astromart.map(|obj| {
@@ -186,9 +185,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     bootstrap(&mut db)?;
-    let new_posts = sync_db(&mut db, &posts);
-
-    println!("{:?}", new_posts);
+    let new_posts = sync_db(&mut db, &posts)?;
 
     send_gotify(
         Url::from_str(&config.config.gotify_server)?,

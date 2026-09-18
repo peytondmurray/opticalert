@@ -14,11 +14,13 @@ use tracing_subscriber::FmtSubscriber;
 
 use crate::astromart::AstromartBackend;
 use crate::backend::Backend;
+use crate::cloudynights::CloudyNightsBackend;
 use crate::posting::{Posting, PostingRow, Status};
 use crate::schema::{bootstrap, fetches, postings};
 
 mod astromart;
 mod backend;
+mod cloudynights;
 mod configuration;
 mod posting;
 mod schema;

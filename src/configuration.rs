@@ -9,6 +9,7 @@ pub struct Site {
 pub struct ConfigFile {
     pub config: Config,
     pub astromart: Option<Site>,
+    pub cloudynights: Option<Site>,
 }
 
 #[derive(Debug, Deserialize)]

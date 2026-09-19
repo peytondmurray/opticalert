@@ -163,28 +163,43 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut db = get_sqlite_db(Path::new("./opticalert.db"))?;
 
     // Read the config file and instantiate the necessary backends
-    let maybe_backends: Option<Vec<Box<dyn Backend>>> = config.astromart.map(|obj| {
-        obj.pages
-            .iter()
-            .map(|page| {
-                Box::new(AstromartBackend {
-                    page_url: page.to_string(),
-                }) as _
-            })
-            .collect::<Vec<Box<dyn Backend>>>()
-    });
+    let mut backends: Vec<Box<dyn Backend>> = config
+        .astromart
+        .map(|obj| {
+            obj.pages
+                .iter()
+                .map(|page| {
+                    Box::new(AstromartBackend {
+                        page_url: page.to_string(),
+                    }) as _
+                })
+                .collect::<Vec<Box<dyn Backend>>>()
+        })
+        .unwrap_or(vec![]);
 
-    info!("Found backends: {:?}", maybe_backends);
-    let posts = if let Some(backends) = maybe_backends {
-        join_all(backends.iter().map(|b| b.get_postings()))
-            .await
-            .iter()
-            .filter_map(|o| o.clone().ok())
-            .flatten()
-            .collect::<Vec<Posting>>()
-    } else {
-        return Ok(());
-    };
+    backends.append(
+        &mut config
+            .cloudynights
+            .map(|obj| {
+                obj.pages
+                    .iter()
+                    .map(|page| {
+                        Box::new(CloudyNightsBackend {
+                            page_url: page.to_string(),
+                        }) as _
+                    })
+                    .collect::<Vec<Box<dyn Backend>>>()
+            })
+            .unwrap_or(vec![]),
+    );
+
+    info!("Found backends: {:?}", backends);
+    let posts = join_all(backends.iter().map(|b| b.get_postings()))
+        .await
+        .iter()
+        .filter_map(|o| o.clone().ok())
+        .flatten()
+        .collect::<Vec<Posting>>();
 
     bootstrap(&mut db)?;
     let new_posts = sync_db(&mut db, &posts)?;

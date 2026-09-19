@@ -89,19 +89,11 @@ impl Backend for CloudyNightsBackend {
             .await?;
 
         // heading: span.ipsContained
-        let res = join_all(
-            elements
-                .iter()
-                .map(|el| {
-                    get_posting(el)
-                    // el.query(By::Css("span.ipsContained")).desc("post title").first()
-                })
-                .collect::<Vec<_>>(),
-        )
-        .await
-        .into_iter()
-        .flatten() // Removes None elements because Option implements IntoIterator
-        .collect::<Vec<Posting>>();
+        let res = join_all(elements.iter().map(get_posting).collect::<Vec<_>>())
+            .await
+            .into_iter()
+            .flatten() // Removes None elements because Option implements IntoIterator
+            .collect::<Vec<Posting>>();
 
         Ok(res)
     }

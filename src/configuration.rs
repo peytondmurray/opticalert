@@ -1,15 +1,15 @@
 use serde::Deserialize;
-
-#[derive(Debug, Deserialize)]
-pub struct Site {
-    pub pages: Vec<String>,
-}
+use crate::backend::Backend;
 
 #[derive(Debug, Deserialize)]
 pub struct ConfigFile {
     pub config: Config,
-    pub astromart: Option<Site>,
-    pub cloudynights: Option<Site>,
+
+    #[serde(flatten)]
+    pub astromart: Option<Backend>,
+
+    #[serde(flatten)]
+    pub cloudynights: Option<Backend>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,14 +1,9 @@
-use crate::backend::{Backend, BackendError};
+use std::collections::HashMap;
 use crate::posting::{Posting, Status};
-use async_trait::async_trait;
 use futures::future::join_all;
 use thirtyfour::extensions::query::ElementQueryable;
 use thirtyfour::{self, By, DesiredCapabilities, WebDriver, WebElement};
-
-#[derive(Debug)]
-pub struct CloudyNightsBackend {
-    pub page_url: String,
-}
+use std::error::Error;
 
 async fn get_posting(el: &WebElement) -> Option<Posting> {
     let a = el
@@ -73,28 +68,28 @@ async fn get_posting(el: &WebElement) -> Option<Posting> {
     })
 }
 
-#[async_trait]
-impl Backend for CloudyNightsBackend {
-    async fn get_postings(&self) -> Result<Vec<Posting>, BackendError> {
-        let caps = DesiredCapabilities::chrome();
-        let driver = WebDriver::managed(caps).await?;
+pub async fn get_postings(
+    page_url: &str,
+    headers: HashMap<String, String>
+) -> Result<Vec<Posting>, Box<dyn Error>> {
+    let caps = DesiredCapabilities::chrome();
+    let driver = WebDriver::managed(caps).await?;
 
-        driver.goto(&self.page_url).await?;
+    driver.goto(page_url).await?;
 
-        // ipsStreamItem ipsStreamItem_contentBlock ipsStreamItem_expanded ipsAreaBackground_reset ipsPad
-        let elements = driver
-            .query(By::Css("li.ipsStreamItem.ipsStreamItem_contentBlock.ipsStreamItem_expanded.ipsAreaBackground_reset.ipsPad"))
-            .desc("posts")
-            .any()
-            .await?;
+    // ipsStreamItem ipsStreamItem_contentBlock ipsStreamItem_expanded ipsAreaBackground_reset ipsPad
+    let elements = driver
+        .query(By::Css("li.ipsStreamItem.ipsStreamItem_contentBlock.ipsStreamItem_expanded.ipsAreaBackground_reset.ipsPad"))
+        .desc("posts")
+        .any()
+        .await?;
 
-        // heading: span.ipsContained
-        let res = join_all(elements.iter().map(get_posting).collect::<Vec<_>>())
-            .await
-            .into_iter()
-            .flatten() // Removes None elements because Option implements IntoIterator
-            .collect::<Vec<Posting>>();
+    // heading: span.ipsContained
+    let res = join_all(elements.iter().map(get_posting).collect::<Vec<_>>())
+        .await
+        .into_iter()
+        .flatten() // Removes None elements because Option implements IntoIterator
+        .collect::<Vec<Posting>>();
 
-        Ok(res)
-    }
+    Ok(res)
 }

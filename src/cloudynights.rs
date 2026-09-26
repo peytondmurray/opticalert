@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use crate::posting::{Posting, Status};
 use futures::future::join_all;
+use std::collections::HashMap;
+use std::error::Error;
 use thirtyfour::extensions::query::ElementQueryable;
 use thirtyfour::{self, By, DesiredCapabilities, WebDriver, WebElement};
-use std::error::Error;
 
 async fn get_posting(el: &WebElement) -> Option<Posting> {
     let a = el
@@ -70,7 +70,7 @@ async fn get_posting(el: &WebElement) -> Option<Posting> {
 
 pub async fn get_postings(
     page_url: &str,
-    headers: HashMap<String, String>
+    _headers: HashMap<String, String>,
 ) -> Result<Vec<Posting>, Box<dyn Error>> {
     let caps = DesiredCapabilities::chrome();
     let driver = WebDriver::managed(caps).await?;

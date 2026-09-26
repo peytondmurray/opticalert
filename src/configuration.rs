@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use crate::backend::Backend;
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct ConfigFile {

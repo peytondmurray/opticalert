@@ -1,5 +1,4 @@
 use config::Config;
-use futures::future::join_all;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::{error::Error, fs, path::Path};
@@ -12,7 +11,6 @@ use reqwest::Url;
 use tracing::{Level, error, info, warn};
 use tracing_subscriber::FmtSubscriber;
 
-use crate::backend::Backend;
 use crate::posting::{Posting, PostingRow, Status};
 use crate::schema::{bootstrap, fetches, postings};
 
@@ -160,58 +158,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = get_config(&get_or_create_config_dir()?)?;
     let mut db = get_sqlite_db(Path::new("./opticalert.db"))?;
 
-    println!("{:?}", config);
+    println!("{:#?}", config);
 
-    // // Read the config file and instantiate the necessary backends
-    // let mut backends: Vec<Box<dyn Backend>> = config
-    //     .astromart
-    //     .map(|obj| {
-    //         obj.pages
-    //             .iter()
-    //             .map(|page| {
-    //                 Box::new(AstromartBackend {
-    //                     page_url: page.to_string(),
-    //                     cookie: "foo".to_string(),
-    //                 }) as _
-    //             })
-    //             .collect::<Vec<Box<dyn Backend>>>()
-    //     })
-    //     .unwrap_or(vec![]);
-    //
-    // backends.append(
-    //     &mut config
-    //         .cloudynights
-    //         .map(|obj| {
-    //             obj.pages
-    //                 .iter()
-    //                 .map(|page| {
-    //                     Box::new(CloudyNightsBackend {
-    //                         page_url: page.to_string(),
-    //                         cookie: "foo".to_string(),
-    //                     }) as _
-    //                 })
-    //                 .collect::<Vec<Box<dyn Backend>>>()
-    //         })
-    //         .unwrap_or(vec![]),
-    // );
-    //
-    // info!("Found backends: {:?}", backends);
-    // let posts = join_all(backends.iter().map(|b| b.get_postings()))
-    //     .await
-    //     .iter()
-    //     .filter_map(|o| o.clone().ok())
-    //     .flatten()
-    //     .collect::<Vec<Posting>>();
-    //
-    // bootstrap(&mut db)?;
-    // let new_posts = sync_db(&mut db, &posts)?;
-    //
-    // send_gotify(
-    //     Url::from_str(&config.config.gotify_server)?,
-    //     &config.config.gotify_key,
-    //     &new_posts,
-    // )
-    // .await?;
+    bootstrap(&mut db)?;
+
+    let mut posts: Vec<Posting> = Vec::new();
+
+    let backends = [&config.astromart, &config.cloudynights];
+
+    for be in backends.into_iter().flatten() {
+        posts.append(&mut be.get_postings().await.ok().unwrap_or(vec![]));
+    }
+
+    let new_posts = sync_db(&mut db, &posts)?;
+
+    send_gotify(
+        Url::from_str(&config.config.gotify_server)?,
+        &config.config.gotify_key,
+        &new_posts,
+    )
+    .await?;
 
     Ok(())
 }

@@ -68,7 +68,7 @@ async fn new_posting(partial: PartialPosting) -> Result<Posting, Box<dyn Error>>
 
 pub async fn get_postings(
     page_url: &str,
-    headers: HashMap<String, String>
+    _headers: HashMap<String, String>,
 ) -> Result<Vec<Posting>, Box<dyn Error>> {
     let response = reqwest::get(Url::parse(page_url)?)
         .await?

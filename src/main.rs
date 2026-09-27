@@ -1,16 +1,14 @@
-use config::Config;
-use std::path::PathBuf;
 use std::str::FromStr;
-use std::{error::Error, fs, path::Path};
+use std::{error::Error, path::Path};
 
 use diesel::dsl::{insert_into, now};
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
-use directories::ProjectDirs;
 use futures::{StreamExt, stream};
 use reqwest::Url;
 use tracing::{Level, error, info, warn};
 use tracing_subscriber::FmtSubscriber;
 
+use crate::configuration::{ConfigFile, ensure_config_exists, get_config_path};
 use crate::posting::{Posting, PostingRow, Status};
 use crate::schema::{bootstrap, fetches, postings};
 
@@ -122,30 +120,6 @@ async fn send_gotify(
     Ok(())
 }
 
-fn get_or_create_config_dir() -> Result<PathBuf, Box<dyn Error>> {
-    let config_dir = ProjectDirs::from("", "", "opticalert")
-        .ok_or("Can't find project directory")?
-        .config_dir()
-        .to_path_buf();
-
-    if !config_dir.exists() {
-        fs::create_dir_all(&config_dir)?;
-    }
-
-    Ok(config_dir)
-}
-
-fn get_config(config_dir: &Path) -> Result<configuration::ConfigFile, Box<dyn Error>> {
-    let config_path = config_dir.join("config.toml");
-
-    let settings = Config::builder()
-        .add_source(config::File::with_name(&config_path.to_string_lossy()))
-        .add_source(config::Environment::with_prefix("OPTICALERT"))
-        .build()?;
-
-    Ok(settings.try_deserialize::<configuration::ConfigFile>()?)
-}
-
 /// https://codingpackets.com/blog/rust-load-a-toml-file/
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -155,7 +129,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tracing::subscriber::set_global_default(subscriber)?;
 
-    let config = get_config(&get_or_create_config_dir()?)?;
+    let config = ConfigFile::from_path(&ensure_config_exists(get_config_path()?)?)?;
     let mut db = get_sqlite_db(Path::new("./opticalert.db"))?;
 
     println!("{:#?}", config);

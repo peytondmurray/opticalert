@@ -1,12 +1,12 @@
 use crate::posting::Posting;
 use crate::{astromart, cloudynights};
 use futures::future::join_all;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Debug;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub enum Backend {
     #[serde(rename = "astromart")]
     Astromart {

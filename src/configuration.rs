@@ -26,7 +26,12 @@ pub struct OtherOptions {
     pub gotify_key: String,
 }
 
-pub fn ensure_config_exists(path: PathBuf) -> Result<PathBuf, Box<dyn Error>> {
+/// Ensure that a configuration file exists at `path`.
+///
+/// If it doesn't exist, a default is written.
+///
+/// * `path`: Path to the config file
+pub fn ensure_config_exists(path: &PathBuf) -> Result<(), Box<dyn Error>> {
     if !path.exists() {
         let parent = path
             .parent()
@@ -36,7 +41,7 @@ pub fn ensure_config_exists(path: PathBuf) -> Result<PathBuf, Box<dyn Error>> {
             fs::create_dir_all(parent)
                 .map_err(|err| format!("Can't create path: {parent:?}; reason: {err:?}"))?;
         }
-        let cf = ConfigFile {
+        let default_config = ConfigFile {
             config: OtherOptions {
                 gotify_server: "<your server>".to_string(),
                 gotify_key: "<your key>".to_string(),
@@ -58,13 +63,10 @@ pub fn ensure_config_exists(path: PathBuf) -> Result<PathBuf, Box<dyn Error>> {
             .map_err(|err| {
                 format!("Unable to open config at {path:?} for writing.\nReason: {err}")
             })?;
-        file.write_all(toml::to_string_pretty(&cf)?.to_string().as_bytes())
-            .map_err(|err| format!("Unable to write config to {path:?}.\nReason: {err}"))?;
+        file.write_all(toml::to_string_pretty(&default_config)?.to_string().as_bytes())
+            .map_err(|err| format!("Unable to write default config to {path:?}.\nReason: {err}"))?;
     }
-
-    // Write a default config
-
-    Ok(path)
+    Ok(())
 }
 
 pub fn get_config_path() -> Result<PathBuf, Box<dyn Error>> {
@@ -91,7 +93,16 @@ impl ConfigFile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env::home_dir;
+    use std::env::{home_dir, temp_dir};
+
+    #[test]
+    fn test_ensure_config_exists() -> Result<(), Box<dyn Error>> {
+        // make a temporary path
+        let path = temp_dir().join("foo").join("bar").join("baz.toml");
+        ensure_config_exists(&path)?;
+        assert!(path.exists());
+        Ok(())
+    }
 
     #[test]
     fn test_from_path() {}

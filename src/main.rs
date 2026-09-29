@@ -129,7 +129,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tracing::subscriber::set_global_default(subscriber)?;
 
-    let config = ConfigFile::from_path(&ensure_config_exists(get_config_path()?)?)?;
+    let path = get_config_path()?;
+    ensure_config_exists(&path)?;
+
+    let config = ConfigFile::from_path(&path)?;
     let mut db = get_sqlite_db(Path::new("./opticalert.db"))?;
 
     println!("{:#?}", config);

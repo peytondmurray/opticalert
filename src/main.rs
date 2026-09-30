@@ -133,28 +133,28 @@ async fn main() -> Result<(), Box<dyn Error>> {
     ensure_config_exists(&path)?;
 
     let config = ConfigFile::from_path(&path)?;
-    let mut db = get_sqlite_db(Path::new("./opticalert.db"))?;
+    // let mut db = get_sqlite_db(Path::new("./opticalert.db"))?;
 
     println!("{:#?}", config);
 
-    bootstrap(&mut db)?;
+    // bootstrap(&mut db)?;
 
-    let mut posts: Vec<Posting> = Vec::new();
-
-    let backends = [&config.astromart, &config.cloudynights];
-
-    for be in backends.into_iter().flatten() {
-        posts.append(&mut be.get_postings().await.ok().unwrap_or(vec![]));
-    }
-
-    let new_posts = sync_db(&mut db, &posts)?;
-
-    send_gotify(
-        Url::from_str(&config.config.gotify_server)?,
-        &config.config.gotify_key,
-        &new_posts,
-    )
-    .await?;
+    // let mut posts: Vec<Posting> = Vec::new();
+    //
+    // let backends = [&config.astromart, &config.cloudynights];
+    //
+    // for be in backends.into_iter().flatten() {
+    //     posts.append(&mut be.get_postings().await.ok().unwrap_or(vec![]));
+    // }
+    //
+    // let new_posts = sync_db(&mut db, &posts)?;
+    //
+    // send_gotify(
+    //     Url::from_str(&config.config.gotify_server)?,
+    //     &config.config.gotify_key,
+    //     &new_posts,
+    // )
+    // .await?;
 
     Ok(())
 }

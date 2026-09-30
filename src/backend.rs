@@ -6,58 +6,46 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Debug;
 
-#[derive(Debug, Deserialize, Serialize)]
-pub enum Backend {
-    #[serde(rename = "astromart")]
-    Astromart {
-        pages: Vec<String>,
-        headers: Option<HashMap<String, String>>,
-    },
+type Headers = Option<HashMap<String, String>>;
+type Pages = Vec<String>;
 
-    #[serde(rename = "cloudynights")]
-    CloudyNights {
-        pages: Vec<String>,
-        headers: Option<HashMap<String, String>>,
-    },
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub struct Backend {
+    pages: Pages,
+    headers: Headers,
 }
 
-async fn load(
-    pages: Vec<String>,
-    headers: HashMap<String, String>,
-    get_postings: impl AsyncFn(&str, HashMap<String, String>) -> Result<Vec<Posting>, Box<dyn Error>>,
-) -> Result<Vec<Posting>, Box<dyn Error>> {
-    Ok(join_all(
-        pages
-            .iter()
-            .map(|page| get_postings(page, headers.clone()))
-            .collect::<Vec<_>>(),
-    )
-    .await
-    .into_iter()
-    .filter_map(|item| item.ok())
-    .flatten()
-    .collect::<Vec<Posting>>())
+// type GetPostingsFn = impl AsyncFn(&str, HashMap<String, String>) -> Result<Vec<Posting>, Box<dyn Error>>;
+
+#[async_trait::async_trait]
+pub trait Site {
+    async fn get_postings(
+        page: &str,
+        headers: HashMap<String, String>,
+    ) -> Result<Vec<Posting>, Box<dyn Error>>;
 }
 
 impl Backend {
-    pub async fn get_postings(&self) -> Result<Vec<Posting>, Box<dyn Error>> {
-        match self {
-            Backend::Astromart { pages, headers } => {
-                load(
-                    pages.to_vec(),
-                    headers.as_ref().unwrap_or(&HashMap::default()).clone(),
-                    astromart::get_postings,
-                )
-                .await
-            }
-            Backend::CloudyNights { pages, headers } => {
-                load(
-                    pages.to_vec(),
-                    headers.as_ref().unwrap_or(&HashMap::default()).clone(),
-                    cloudynights::get_postings,
-                )
-                .await
-            }
-        }
+    pub async fn load(&self, backend_type: &str) -> Result<Vec<Posting>, Box<dyn Error>> {
+        let be = match backend_type {
+            "astromart" => astromart::Astromart{},
+            _ => Err("fuck")?
+            // "cloudynights" => cloudynights::CloudyNights{},
+        };
+
+        Ok(
+            join_all(
+                self.pages
+                    .iter()
+                    .map(|page| be.get_postings(page, self.headers.clone()))
+                    .collect::<Vec<_>>(),
+            )
+            .await
+            .into_iter()
+            .filter_map(|item| item.ok())
+            .flatten()
+            .collect::<Vec<Posting>>()
+        )
     }
 }

@@ -16,8 +16,6 @@ pub struct Backend {
     headers: Headers,
 }
 
-// type GetPostingsFn = impl AsyncFn(&str, HashMap<String, String>) -> Result<Vec<Posting>, Box<dyn Error>>;
-
 #[async_trait::async_trait]
 pub trait Site {
     async fn get_postings(
@@ -29,10 +27,10 @@ pub trait Site {
 
 impl Backend {
     pub async fn load(&self, backend_type: &str) -> Result<Vec<Posting>, Box<dyn Error>> {
-        let be = match backend_type {
-            "astromart" => astromart::Astromart{},
-            _ => Err("fuck")?
-            // "cloudynights" => cloudynights::CloudyNights{},
+        let be: Box<dyn Site> = match backend_type {
+            "astromart" => Box::new(astromart::Astromart{}),
+            "cloudynights" => Box::new(cloudynights::CloudyNights{}),
+            other => Err(format!("No backend available for site {other:?}"))?,
         };
 
         Ok(

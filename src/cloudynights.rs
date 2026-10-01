@@ -1,3 +1,4 @@
+use crate::backend::Site;
 use crate::posting::{Posting, Status};
 use futures::future::join_all;
 use std::collections::HashMap;
@@ -68,28 +69,34 @@ async fn get_posting(el: &WebElement) -> Option<Posting> {
     })
 }
 
-pub async fn get_postings(
-    page_url: &str,
-    _headers: HashMap<String, String>,
-) -> Result<Vec<Posting>, Box<dyn Error>> {
-    let caps = DesiredCapabilities::chrome();
-    let driver = WebDriver::managed(caps).await?;
+pub struct CloudyNights;
 
-    driver.goto(page_url).await?;
+#[async_trait::async_trait]
+impl Site for CloudyNights {
+    async fn get_postings(
+        &self,
+        page: &str,
+        headers: HashMap<String,String>
+    ) ->  Result<Vec<Posting> ,Box<dyn Error>> {
+        let caps = DesiredCapabilities::chrome();
+        let driver = WebDriver::managed(caps).await?;
 
-    // ipsStreamItem ipsStreamItem_contentBlock ipsStreamItem_expanded ipsAreaBackground_reset ipsPad
-    let elements = driver
-        .query(By::Css("li.ipsStreamItem.ipsStreamItem_contentBlock.ipsStreamItem_expanded.ipsAreaBackground_reset.ipsPad"))
-        .desc("posts")
-        .any()
-        .await?;
+        driver.goto(page).await?;
 
-    // heading: span.ipsContained
-    let res = join_all(elements.iter().map(get_posting).collect::<Vec<_>>())
-        .await
-        .into_iter()
-        .flatten() // Removes None elements because Option implements IntoIterator
-        .collect::<Vec<Posting>>();
+        // ipsStreamItem ipsStreamItem_contentBlock ipsStreamItem_expanded ipsAreaBackground_reset ipsPad
+        let elements = driver
+            .query(By::Css("li.ipsStreamItem.ipsStreamItem_contentBlock.ipsStreamItem_expanded.ipsAreaBackground_reset.ipsPad"))
+            .desc("posts")
+            .any()
+            .await?;
 
-    Ok(res)
+        // heading: span.ipsContained
+        let res = join_all(elements.iter().map(get_posting).collect::<Vec<_>>())
+            .await
+            .into_iter()
+            .flatten() // Removes None elements because Option implements IntoIterator
+            .collect::<Vec<Posting>>();
+
+        Ok(res)
+    }
 }

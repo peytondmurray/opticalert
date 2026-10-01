@@ -10,9 +10,9 @@ type Headers = Option<HashMap<String, String>>;
 type Pages = Vec<String>;
 
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(tag = "type")]
 pub struct Backend {
     pages: Pages,
+    #[serde(flatten)]
     headers: Headers,
 }
 

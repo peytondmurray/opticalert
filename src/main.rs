@@ -11,6 +11,7 @@ use tracing_subscriber::FmtSubscriber;
 use crate::configuration::{ConfigFile, ensure_config_exists, get_config_path};
 use crate::posting::{Posting, PostingRow, Status};
 use crate::schema::{bootstrap, fetches, postings};
+use crate::backend::Site;
 
 mod astromart;
 mod backend;
@@ -141,10 +142,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut posts: Vec<Posting> = Vec::new();
 
-    let backends = [&config.astromart, &config.cloudynights];
-
-    for be in backends.into_iter().flatten() {
-        posts.append(&mut be.get_postings().await.ok().unwrap_or(vec![]));
+    for (name, be) in config.backends.into_iter() {
+        posts.append(&mut be.load(&name).await.ok().unwrap_or(vec![]));
     }
 
     let new_posts = sync_db(&mut db, &posts)?;

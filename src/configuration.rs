@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use config::Config;
 use directories::ProjectDirs;
 use fs::OpenOptions;
@@ -12,8 +13,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ConfigFile {
     pub config: OtherOptions,
-    pub astromart: Option<Backend>,
-    pub cloudynights: Option<Backend>,
+    #[serde(flatten)]
+    pub backends: HashMap<String, Backend>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

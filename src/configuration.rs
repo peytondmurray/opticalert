@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use config::Config;
 use directories::ProjectDirs;
 use fs::OpenOptions;
+use std::collections::HashMap;
 use std::io::Write;
 use std::{error::Error, path::Path};
 use std::{fs, path::PathBuf};
@@ -39,30 +39,34 @@ pub fn ensure_config_exists(path: &PathBuf) -> Result<(), Box<dyn Error>> {
                 .map_err(|err| format!("Can't create path: {parent:?}; reason: {err:?}"))?;
         }
 
-        // let default_config = ConfigFile {
-        //     config: OtherOptions {
-        //         gotify_server: "<your server>".to_string(),
-        //         gotify_key: "<your key>".to_string(),
-        //     },
-        //     astromart: {
-        //         Some(Backend::Astromart {
-        //             pages: vec!["<your classifieds search>".to_string()],
-        //             headers: None,
-        //         })
-        //     },
-        //     cloudynights: None,
-        // };
-        //
-        // let mut file = OpenOptions::new()
-        //     .write(true)
-        //     .create(true)
-        //     .truncate(true)
-        //     .open(path)
-        //     .map_err(|err| {
-        //         format!("Unable to open config at {path:?} for writing.\nReason: {err}")
-        //     })?;
-        // file.write_all(toml::to_string_pretty(&default_config)?.to_string().as_bytes())
-        //     .map_err(|err| format!("Unable to write default config to {path:?}.\nReason: {err}"))?;
+        let default_config = ConfigFile {
+            config: OtherOptions {
+                gotify_server: "<your server>".to_string(),
+                gotify_key: "<your key>".to_string(),
+            },
+            backends: HashMap::from([(
+                "astromart".to_string(),
+                Backend {
+                    pages: vec!["<your classifieds search>".to_string()],
+                    headers: None,
+                },
+            )]),
+        };
+
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .map_err(|err| {
+                format!("Unable to open config at {path:?} for writing.\nReason: {err}")
+            })?;
+        file.write_all(
+            toml::to_string_pretty(&default_config)?
+                .to_string()
+                .as_bytes(),
+        )
+        .map_err(|err| format!("Unable to write default config to {path:?}.\nReason: {err}"))?;
     }
     Ok(())
 }

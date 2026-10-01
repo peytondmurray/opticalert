@@ -66,8 +66,6 @@ fn new_posting(partial: PartialPosting) -> Result<Posting, Box<dyn Error>> {
     Ok(post)
 }
 
-
-
 pub struct Astromart;
 
 #[async_trait::async_trait]
@@ -77,7 +75,6 @@ impl Site for Astromart {
         page_url: &str,
         _headers: HashMap<String, String>,
     ) -> Result<Vec<Posting>, Box<dyn Error>> {
-
         // We scope the `Html` usage here because it is not Send, and thus cannot be safely held
         // onto across await points. Basically nothing provided by scraper is okay to be sent cross
         // thread (although we are only doing concurrent work here, not multithreaded...?)

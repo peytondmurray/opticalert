@@ -11,7 +11,6 @@ use tracing_subscriber::FmtSubscriber;
 use crate::configuration::{ConfigFile, ensure_config_exists, get_config_path};
 use crate::posting::{Posting, PostingRow, Status};
 use crate::schema::{bootstrap, fetches, postings};
-use crate::backend::Site;
 
 mod astromart;
 mod backend;

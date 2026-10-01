@@ -76,10 +76,17 @@ impl Site for CloudyNights {
     async fn get_postings(
         &self,
         page: &str,
-        headers: HashMap<String,String>
-    ) ->  Result<Vec<Posting> ,Box<dyn Error>> {
+        headers: HashMap<String, String>,
+    ) -> Result<Vec<Posting>, Box<dyn Error>> {
         let caps = DesiredCapabilities::chrome();
         let driver = WebDriver::managed(caps).await?;
+
+        // Does this get propagated to every web request now?
+        driver
+            .cdp()
+            .network()
+            .set_extra_http_headers(headers)
+            .await?;
 
         driver.goto(page).await?;
 

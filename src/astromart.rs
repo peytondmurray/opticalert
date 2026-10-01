@@ -1,7 +1,6 @@
 use crate::backend::Site;
 use crate::posting::{Posting, Status};
 use chrono::NaiveDateTime;
-use futures::future::join_all;
 use reqwest::Url;
 use scraper::{ElementRef, Html, Selector};
 use std::collections::HashMap;
@@ -52,7 +51,7 @@ fn parse_table_row(element: ElementRef) -> Result<PartialPosting, Box<dyn Error>
     })
 }
 
-async fn new_posting(partial: PartialPosting) -> Result<Posting, Box<dyn Error>> {
+fn new_posting(partial: PartialPosting) -> Result<Posting, Box<dyn Error>> {
     let post = Posting {
         post_type: partial.post_type,
         title: partial.title,
@@ -74,34 +73,32 @@ pub struct Astromart;
 #[async_trait::async_trait]
 impl Site for Astromart {
     async fn get_postings(
+        &self,
         page_url: &str,
         _headers: HashMap<String, String>,
     ) -> Result<Vec<Posting>, Box<dyn Error>> {
-        let response = reqwest::get(Url::parse(page_url)?)
-            .await?
-            .error_for_status()?;
 
         // We scope the `Html` usage here because it is not Send, and thus cannot be safely held
         // onto across await points. Basically nothing provided by scraper is okay to be sent cross
         // thread (although we are only doing concurrent work here, not multithreaded...?)
         let partials = {
-            let html = Html::parse_document(&response.text().await?);
+            let response = reqwest::get(Url::parse(page_url)?)
+                .await?
+                .error_for_status()?
+                .text()
+                .await?;
+
+            let html = Html::parse_document(&response);
             let selector = Selector::parse(".classifieds > .flex-table-row.flex-table-row--body")?;
 
             html.select(&selector)
                 .filter_map(|el| parse_table_row(el).ok())
                 .collect::<Vec<PartialPosting>>()
         };
-        let res = join_all(
-            partials
-                .iter()
-                .map(|p| new_posting(p.clone()))
-                .collect::<Vec<_>>(),
-        )
-        .await
-        .into_iter()
-        .filter_map(|item| item.ok())
-        .collect();
+        let res = partials
+            .iter()
+            .filter_map(|p| new_posting(p.clone()).ok())
+            .collect::<Vec<_>>();
 
         Ok(res)
     }

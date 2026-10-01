@@ -21,6 +21,7 @@ pub struct Backend {
 #[async_trait::async_trait]
 pub trait Site {
     async fn get_postings(
+        &self,
         page: &str,
         headers: HashMap<String, String>,
     ) -> Result<Vec<Posting>, Box<dyn Error>>;
@@ -38,7 +39,12 @@ impl Backend {
             join_all(
                 self.pages
                     .iter()
-                    .map(|page| be.get_postings(page, self.headers.clone()))
+                    .map(|page| {
+                        be.get_postings(
+                            page,
+                            self.headers.clone().unwrap_or_default()
+                        )
+                    })
                     .collect::<Vec<_>>(),
             )
             .await

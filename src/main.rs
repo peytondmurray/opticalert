@@ -1,24 +1,20 @@
-use config::Config;
-use futures::future::join_all;
-use std::path::PathBuf;
 use std::str::FromStr;
-use std::{error::Error, fs, path::Path};
+use std::{error::Error, path::Path};
 
 use diesel::dsl::{insert_into, now};
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
-use directories::ProjectDirs;
 use futures::{StreamExt, stream};
 use reqwest::Url;
 use tracing::{Level, error, info, warn};
 use tracing_subscriber::FmtSubscriber;
 
-use crate::astromart::AstromartBackend;
-use crate::backend::Backend;
+use crate::configuration::{ConfigFile, ensure_config_exists, get_config_path};
 use crate::posting::{Posting, PostingRow, Status};
 use crate::schema::{bootstrap, fetches, postings};
 
 mod astromart;
 mod backend;
+mod cloudynights;
 mod configuration;
 mod posting;
 mod schema;
@@ -124,30 +120,6 @@ async fn send_gotify(
     Ok(())
 }
 
-fn get_or_create_config_dir() -> Result<PathBuf, Box<dyn Error>> {
-    let config_dir = ProjectDirs::from("", "", "opticalert")
-        .ok_or("Can't find project directory")?
-        .config_dir()
-        .to_path_buf();
-
-    if !config_dir.exists() {
-        fs::create_dir_all(&config_dir)?;
-    }
-
-    Ok(config_dir)
-}
-
-fn get_config(config_dir: &Path) -> Result<configuration::ConfigFile, Box<dyn Error>> {
-    let config_path = config_dir.join("config.toml");
-
-    let settings = Config::builder()
-        .add_source(config::File::with_name(&config_path.to_string_lossy()))
-        .add_source(config::Environment::with_prefix("OPTICALERT"))
-        .build()?;
-
-    Ok(settings.try_deserialize::<configuration::ConfigFile>()?)
-}
-
 /// https://codingpackets.com/blog/rust-load-a-toml-file/
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -157,34 +129,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tracing::subscriber::set_global_default(subscriber)?;
 
-    let config = get_config(&get_or_create_config_dir()?)?;
+    let path = get_config_path()?;
+    ensure_config_exists(&path)?;
+
+    let config = ConfigFile::from_path(&path)?;
     let mut db = get_sqlite_db(Path::new("./opticalert.db"))?;
 
-    // Read the config file and instantiate the necessary backends
-    let maybe_backends: Option<Vec<Box<dyn Backend>>> = config.astromart.map(|obj| {
-        obj.pages
-            .iter()
-            .map(|page| {
-                Box::new(AstromartBackend {
-                    page_url: page.to_string(),
-                }) as _
-            })
-            .collect::<Vec<Box<dyn Backend>>>()
-    });
-
-    info!("Found backends: {:?}", maybe_backends);
-    let posts = if let Some(backends) = maybe_backends {
-        join_all(backends.iter().map(|b| b.get_postings()))
-            .await
-            .iter()
-            .filter_map(|o| o.clone().ok())
-            .flatten()
-            .collect::<Vec<Posting>>()
-    } else {
-        return Ok(());
-    };
+    println!("{:#?}", config);
 
     bootstrap(&mut db)?;
+
+    let mut posts: Vec<Posting> = Vec::new();
+
+    for (name, be) in config.backends.into_iter() {
+        posts.append(&mut be.load(&name).await.ok().unwrap_or(vec![]));
+    }
+
     let new_posts = sync_db(&mut db, &posts)?;
 
     send_gotify(

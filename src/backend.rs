@@ -1,25 +1,48 @@
 use crate::posting::Posting;
-use async_trait::async_trait;
+use crate::{astromart, cloudynights};
+use futures::future::join_all;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::error::Error;
 use std::fmt::Debug;
 
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct BackendError {
-    message: String,
+type Headers = Option<HashMap<String, String>>;
+type Pages = Vec<String>;
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Backend {
+    pub pages: Pages,
+    #[serde(flatten)]
+    pub headers: Headers,
 }
 
-impl<T> From<T> for BackendError
-where
-    T: ToString,
-{
-    fn from(value: T) -> Self {
-        BackendError {
-            message: value.to_string(),
-        }
+#[async_trait::async_trait]
+pub trait Site {
+    async fn get_postings(
+        &self,
+        page: &str,
+        headers: HashMap<String, String>,
+    ) -> Result<Vec<Posting>, Box<dyn Error>>;
+}
+
+impl Backend {
+    pub async fn load(&self, backend_type: &str) -> Result<Vec<Posting>, Box<dyn Error>> {
+        let be: Box<dyn Site> = match backend_type {
+            "astromart" => Box::new(astromart::Astromart {}),
+            "cloudynights" => Box::new(cloudynights::CloudyNights {}),
+            other => Err(format!("No backend available for site {other:?}"))?,
+        };
+
+        Ok(join_all(
+            self.pages
+                .iter()
+                .map(|page| be.get_postings(page, self.headers.clone().unwrap_or_default()))
+                .collect::<Vec<_>>(),
+        )
+        .await
+        .into_iter()
+        .filter_map(|item| item.ok())
+        .flatten()
+        .collect::<Vec<Posting>>())
     }
-}
-
-#[async_trait]
-pub trait Backend: Debug {
-    async fn get_postings(&self) -> Result<Vec<Posting>, BackendError>;
 }

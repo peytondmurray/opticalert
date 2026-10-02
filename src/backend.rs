@@ -27,7 +27,7 @@ pub trait Site {
 
 impl Backend {
     pub async fn load(&self, backend_type: &str) -> Result<Vec<Posting>, Box<dyn Error>> {
-        let be: Box<dyn Site> = match backend_type {
+        let site: Box<dyn Site> = match backend_type {
             "astromart" => Box::new(astromart::Astromart{}),
             "cloudynights" => Box::new(cloudynights::CloudyNights{}),
             other => Err(format!("No backend available for site {other:?}"))?,
@@ -38,7 +38,7 @@ impl Backend {
                 self.pages
                     .iter()
                     .map(|page| {
-                        be.get_postings(
+                        site.get_postings(
                             page,
                             self.headers.clone().unwrap_or_default()
                         )

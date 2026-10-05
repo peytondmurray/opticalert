@@ -135,13 +135,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = ConfigFile::from_path(&path)?;
     let mut db = get_sqlite_db(Path::new("./opticalert.db"))?;
 
-    println!("{:#?}", config);
-
     bootstrap(&mut db)?;
 
     let mut posts: Vec<Posting> = Vec::new();
-
     for (name, be) in config.backends.into_iter() {
+        info!("Backend: {name}");
         posts.append(&mut be.load(&name).await.ok().unwrap_or(vec![]));
     }
 

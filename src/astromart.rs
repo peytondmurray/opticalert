@@ -1,5 +1,6 @@
 use crate::backend::Site;
 use crate::posting::{Posting, Status};
+use reqwest::header::HeaderMap;
 use tracing::warn;
 use chrono::NaiveDateTime;
 use reqwest::Url;
@@ -72,19 +73,22 @@ pub struct Astromart;
 
 async fn _get_postings(
     page_url: &str,
-    _headers: HashMap<String, String>,
+    headers: HashMap<String, String>,
 ) -> Result<Vec<Posting>, Box<dyn Error>> {
     // We scope the `Html` usage here because it is not Send, and thus cannot be safely held
     // onto across await points. Basically nothing provided by scraper is okay to be sent cross
     // thread (although we are only doing concurrent work here, not multithreaded...?)
+    let client = reqwest::Client::builder()
+        .default_headers((&headers).try_into()?)
+        .build()?;
+
     let partials = {
-        let response = reqwest::get(Url::parse(page_url)?)
+        let response = client.get(Url::parse(page_url)?)
+            .send()
             .await?
             .error_for_status()?
             .text()
             .await?;
-
-        println!("{:#?}", response);
 
         let html = Html::parse_document(&response);
         let selector = Selector::parse(".classifieds > .flex-table-row.flex-table-row--body")?;
@@ -113,9 +117,9 @@ impl Site for Astromart {
     async fn get_postings(
         &self,
         page_url: &str,
-        _headers: HashMap<String, String>,
+        headers: HashMap<String, String>,
     ) -> Result<Vec<Posting>, Box<dyn Error>> {
-        _get_postings(page_url, _headers).await.inspect_err(|err| {
+        _get_postings(page_url, headers).await.inspect_err(|err| {
             warn!("Unable to get page: {page_url}. Reason: {err}");
         })
     }

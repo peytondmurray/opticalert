@@ -10,7 +10,7 @@ use tracing_subscriber::FmtSubscriber;
 
 use crate::configuration::{ConfigFile, ensure_config_exists, get_config_path};
 use crate::posting::{Posting, PostingRow, Status};
-use crate::schema::{bootstrap, fetches, postings};
+use crate::schema::{migrate, fetches, postings};
 
 mod astromart;
 mod backend;
@@ -135,7 +135,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = ConfigFile::from_path(&path)?;
     let mut db = get_sqlite_db(Path::new("./opticalert.db"))?;
 
-    bootstrap(&mut db)?;
+    migrate(&mut db)?;
 
     let mut posts: Vec<Posting> = Vec::new();
     for (name, be) in config.backends.into_iter() {

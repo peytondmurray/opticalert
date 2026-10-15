@@ -93,13 +93,6 @@ async fn _get_postings(
         let html = Html::parse_document(&response);
         let selector = Selector::parse(".classifieds > .flex-table-row.flex-table-row--body")?;
 
-        let h = html.html();
-        println!("{h:?}");
-        fs::write(
-            "/home/pdmurray/dev/sandbox/beef.html",
-            h,
-        )?;
-
         html.select(&selector)
             .filter_map(|el| parse_table_row(el).ok())
             .collect::<Vec<PartialPosting>>()

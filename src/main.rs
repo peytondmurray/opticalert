@@ -10,7 +10,7 @@ use tracing_subscriber::FmtSubscriber;
 
 use crate::configuration::{ConfigFile, ensure_config_exists, get_config_path};
 use crate::posting::{Posting, PostingRow, Status};
-use crate::schema::{migrate, fetches, postings};
+use crate::schema::{migrate, fetches, postings, logs};
 
 mod astromart;
 mod backend;
@@ -145,12 +145,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let new_posts = sync_db(&mut db, &posts)?;
 
-    send_gotify(
+    if let Err(err) = send_gotify(
         Url::from_str(&config.config.gotify_server)?,
         &config.config.gotify_key,
         &new_posts,
     )
-    .await?;
+    .await {
+        insert_into(logs::table)
+            .values((
+                logs::date.eq(&now),
+                logs::message.eq(err.to_string()),
+            ))
+            .execute(&mut db)?;
+    }
 
     Ok(())
 }

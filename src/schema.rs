@@ -20,7 +20,15 @@ table! {
 table! {
     fetches {
         id -> Integer,
-        date -> Timestamp
+        date -> Timestamp,
+    }
+}
+
+table! {
+    logs {
+        id -> Integer,
+        date -> Timestamp,
+        message -> Text,
     }
 }
 
@@ -34,6 +42,9 @@ pub fn migrate(connection: &mut SqliteConnection) -> Result<(), Error> {
         "CREATE TABLE IF NOT EXISTS fetches (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT);",
     )
     .execute(connection)?;
+    sql_query(
+        "CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, message TEXT);"
+    ).execute(connection)?;
 
     Ok(())
 }
